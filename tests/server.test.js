@@ -1,15 +1,5 @@
 const request = require('supertest');
-const app = require('../src/server');
-
-let server;
-
-beforeAll(() => {
-    server = app.listen(3006);
-});
-
-afterAll((done) => {
-    server.close(done);
-});
+const { app } = require('../src/server');
 
 describe('Server Endpoints', () => {
     test('GET / should return welcome message', async () => {
