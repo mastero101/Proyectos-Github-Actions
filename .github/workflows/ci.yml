@@ -31,7 +31,7 @@ jobs:
   build-and-run:
     needs: test
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/master'  # Changed from 'main' to 'master'
 
     steps:
     - uses: actions/checkout@v3
