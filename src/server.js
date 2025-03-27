@@ -25,26 +25,46 @@ app.get('/health', (req, res) => {
     res.json({ status: 'OK' });
 });
 
-// Test error route
+// Test error route - eliminar esta versión duplicada
 app.get('/chain-error', (req, res, next) => {
     next(new Error('Test error'));
 });
 
 // Error handling middleware - must be before 404 handler
 app.use((err, req, res, next) => {
-    if (err) {
-        return res.status(500).json({ error: 'Internal Server Error' });
+    const status = err?.status || 500;
+    const errorResponse = { 
+        error: 'Internal Server Error'
+    };
+    
+    if (process.env.NODE_ENV === 'development' && err?.stack) {
+        errorResponse.stack = err.stack;
     }
-    next();
+    
+    return res.status(status).json(errorResponse);
 });
 
-// Handle 404s
+// Test error routes
+app.get('/error-test', (req, res, next) => {
+    const error = new Error('Custom error');
+    error.status = req.get('x-error') ? (parseInt(req.get('x-error-status')) || 404) : 500;
+    next(error);
+});
+
+app.get('/chain-error', (req, res, next) => {
+    const error = new Error('Test error');
+    error.status = parseInt(req.get('x-error-status')) || 500;
+    next(error);
+});
+
+// Handle 404s - mover después de todas las rutas
 app.use((req, res) => {
     res.status(404).json({ error: 'Not found' });
 });
 
 const startServer = (customPort) => {
-    if (!customPort && !process.env.PORT) {
+    if (!customPort && (!process.env.PORT || process.env.PORT === 'null')) {
+        console.error('No port specified');
         return Promise.resolve(null);
     }
     const serverPort = customPort || port;
@@ -56,38 +76,49 @@ const startServer = (customPort) => {
                     resolve(server);
                 })
                 .once('error', (error) => {
-                    if (error.code === 'EADDRINUSE') {
-                        console.error(`Port ${serverPort} is already in use`);
-                        resolve(null);
-                    } else {
-                        reject(error);
-                    }
+                    console.error(error.code === 'EADDRINUSE' 
+                        ? `Port ${serverPort} is already in use`
+                        : `Server error on port ${serverPort}: ${error.message}`);
+                    error.code === 'EADDRINUSE' ? resolve(null) : reject(error);
                 });
         } catch (error) {
+            console.error('Server startup error:', error.message);
             reject(error);
         }
     });
 };
 
-let server = null;
-const initServer = async () => {
-    try {
-        if (!server && (require.main === module || process.env.NODE_ENV === 'test')) {
-            const testPort = process.env.NODE_ENV === 'test' ? 3000 : port;
-            server = await startServer(testPort);
+const initServer = (() => {
+    let serverInstance = null;
+    
+    const reset = async () => {
+        if (serverInstance) {
+            await new Promise(resolve => {
+                serverInstance.close(resolve);
+                serverInstance = null;
+            });
         }
-        return server;
-    } catch (error) {
-        console.error('Server initialization failed:', error);
-        return null;
-    }
-};
+    };
+    
+    const init = async () => {
+        await reset();
+        try {
+            const isTest = process.env.NODE_ENV === 'test';
+            serverInstance = await startServer(isTest ? 3000 : port);
+            return serverInstance;
+        } catch (error) {
+            console.error('Failed to start server:', error.message);
+            return null;
+        }
+    };
+
+    init.reset = reset;
+    return init;
+})();
 
 // Initialize server if in main module
 if (require.main === module) {
-    initServer().catch(() => {
-        process.exit(1);
-    });
+    initServer().catch(console.error);
 }
 
 module.exports = { app, startServer, initServer };
