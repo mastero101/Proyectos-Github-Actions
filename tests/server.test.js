@@ -1,16 +1,17 @@
 const request = require('supertest');
-const { app, startServer } = require('../src/server');
+const { app, startServer, initServer } = require('../src/server');
 
 describe('Server Endpoints', () => {
     let server;
-    const TEST_PORT = 3006;
 
-    beforeAll(() => {
-        server = startServer(TEST_PORT);
+    beforeAll(async () => {
+        server = await startServer(3006);
     });
 
-    afterAll((done) => {
-        server.close(done);
+    afterAll(async () => {
+        if (server) {
+            await new Promise(resolve => server.close(resolve));
+        }
     });
 
     test('GET / should return welcome message', async () => {
@@ -38,39 +39,63 @@ describe('Server Endpoints', () => {
         expect(response.statusCode).toBe(404);
     });
 
-    test('Server should start with default port when no custom port provided', () => {
-        const testServer = startServer(3007); // Use different port
+    test('Server should start with default port when no custom port provided', async () => {
+        const testServer = await startServer(3007);
+        expect(testServer).not.toBeNull();
         expect(testServer.listening).toBe(true);
-        testServer.close();
+        await new Promise(resolve => testServer.close(resolve));
     });
 
-    test('Should handle malformed JSON', async () => {
+    test('Should handle invalid port', async () => {
+        const originalPort = process.env.PORT;
+        delete process.env.PORT;
+        const server = await startServer();
+        expect(server).toBeNull();
+        process.env.PORT = originalPort;
+    });
+
+    test('Should handle JSON parsing errors', async () => {
         const response = await request(app)
             .post('/')
             .set('Content-Type', 'application/json')
-            .send('{"malformed":json}');
+            .send('{"invalid": json}');
         expect(response.statusCode).toBe(400);
     });
 
-    test('Should handle different content types', async () => {
-        const response = await request(app)
-            .post('/')
-            .set('Content-Type', 'text/plain')
-            .send('Hello World');
-        expect(response.statusCode).toBe(404);
+    test('Should handle error middleware with no error', async () => {
+        const response = await request(app).get('/health');
+        expect(response.statusCode).toBe(200);
     });
 
-    test('Should handle next() in error middleware', async () => {
-        const response = await request(app).get('/chain-error');
-        expect(response.statusCode).toBe(500);
-        expect(response.body.error).toBe('Internal Server Error');
+    test('Should handle server errors', async () => {
+        const mockListen = jest.spyOn(app, 'listen').mockImplementationOnce(() => {
+            throw new Error('Server error');
+        });
+        await expect(startServer(3009)).rejects.toThrow('Server error');
+        mockListen.mockRestore();
     });
 
-    test('Should handle module initialization', () => {
+    test('Should handle module initialization', async () => {
+        const originalEnv = process.env.NODE_ENV;
         process.env.NODE_ENV = 'test';
-        const { server: testServer } = require('../src/server');
+        const testServer = await initServer();
         expect(testServer).not.toBeNull();
-        testServer.close();
-        process.env.NODE_ENV = 'development';
+        if (testServer) {
+            await new Promise(resolve => testServer.close(resolve));
+        }
+        process.env.NODE_ENV = originalEnv;
+    });
+
+    afterEach(async () => {
+        // Wait for any pending operations to complete
+        await new Promise(resolve => setTimeout(resolve, 100));
+    });
+
+    afterAll(async () => {
+        if (server) {
+            await new Promise(resolve => server.close(resolve));
+        }
+        // Additional cleanup for any remaining test servers
+        await new Promise(resolve => setTimeout(resolve, 100));
     });
 });

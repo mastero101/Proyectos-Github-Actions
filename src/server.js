@@ -44,29 +44,50 @@ app.use((req, res) => {
 });
 
 const startServer = (customPort) => {
-    const serverPort = customPort || port;
-    try {
-        const server = app.listen(serverPort, () => {
-            console.log(`Server is running on port ${serverPort}`);
-        });
-        return server;
-    } catch (error) {
-        if (error.code === 'EADDRINUSE') {
-            console.error(`Port ${serverPort} is already in use`);
-            return null;
-        }
-        throw error;
+    if (!customPort && !process.env.PORT) {
+        return Promise.resolve(null);
     }
+    const serverPort = customPort || port;
+    return new Promise((resolve, reject) => {
+        try {
+            const server = app.listen(serverPort)
+                .once('listening', () => {
+                    console.log(`Server is running on port ${serverPort}`);
+                    resolve(server);
+                })
+                .once('error', (error) => {
+                    if (error.code === 'EADDRINUSE') {
+                        console.error(`Port ${serverPort} is already in use`);
+                        resolve(null);
+                    } else {
+                        reject(error);
+                    }
+                });
+        } catch (error) {
+            reject(error);
+        }
+    });
 };
 
 let server = null;
+const initServer = async () => {
+    try {
+        if (!server && (require.main === module || process.env.NODE_ENV === 'test')) {
+            const testPort = process.env.NODE_ENV === 'test' ? 3000 : port;
+            server = await startServer(testPort);
+        }
+        return server;
+    } catch (error) {
+        console.error('Server initialization failed:', error);
+        return null;
+    }
+};
+
+// Initialize server if in main module
 if (require.main === module) {
-    server = startServer();
+    initServer().catch(() => {
+        process.exit(1);
+    });
 }
 
-// For testing purposes
-if (process.env.NODE_ENV === 'test') {
-    server = startServer(3000);
-}
-
-module.exports = { app, server, startServer };
+module.exports = { app, startServer, initServer };
