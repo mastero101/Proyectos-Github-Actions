@@ -32,7 +32,7 @@ app.get('/chain-error', (req, res, next) => {
 
 // Error handling middleware - must be before 404 handler
 // Error handling middleware
-app.use((err, req, res, _next) => {
+app.use((err, req, res) => {
     const status = err?.status || 500;
     const errorResponse = { 
         error: 'Internal Server Error'
