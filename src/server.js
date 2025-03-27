@@ -31,8 +31,7 @@ app.get('/chain-error', (req, res, next) => {
 });
 
 // Error handling middleware - must be before 404 handler
-// Error handling middleware
-app.use((err, req, res) => {
+app.use((err, req, res, next) => {
     const status = err?.status || 500;
     const errorResponse = { 
         error: 'Internal Server Error'
@@ -47,8 +46,11 @@ app.use((err, req, res) => {
 
 // Test error routes
 app.get('/error-test', (req, res, next) => {
+    if (!req.get('x-error')) {
+        return next();
+    }
     const error = new Error('Custom error');
-    error.status = req.get('x-error') ? (parseInt(req.get('x-error-status')) || 404) : 500;
+    error.status = parseInt(req.get('x-error-status')) || 404;
     next(error);
 });
 
@@ -58,7 +60,7 @@ app.get('/chain-error', (req, res, next) => {
     next(error);
 });
 
-// Handle 404s - mover después de todas las rutas
+// Handle 404s - must be last
 app.use((req, res) => {
     res.status(404).json({ error: 'Not found' });
 });
