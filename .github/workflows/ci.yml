@@ -25,15 +25,13 @@ jobs:
         node-version: ${{ matrix.node-version }}
         
     - name: Install dependencies
-      run: |
-        npm ci
-        npm install -g eslint jest-coverage
+      run: npm ci
         
     - name: Lint code
-      run: eslint .
+      run: npm run lint
       
     - name: Run tests with coverage
-      run: jest --coverage
+      run: npm run test:coverage
       
     - name: Upload coverage reports
       uses: codecov/codecov-action@v3
